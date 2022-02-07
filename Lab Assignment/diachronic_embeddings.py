@@ -222,7 +222,7 @@ print("Method 4 (aligned max): {}".format(change_scores['aligned_max']))
 
 # Step 4
 data_dict = gen_data_dict(data)
-print('<--- Visualization and Change Point Detection --->')
+print('\n<--- Visualization and Change Point Detection --->')
 plot_distances(data_dict, 'harper')
 plot_distances(data_dict, 'programs')
 plot_distances(data_dict, 'peter')
