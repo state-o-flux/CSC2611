@@ -8,7 +8,7 @@ from util import load_data, p_print, cosine_similarity, gen_z_score, gen_word_gr
 
 included_grades = ['00','01','02','03','04','05','06','full']
 
-def gen_vocabulary(adult_corpus, by, minimum, save=False):
+def gen_vocabulary(adult_corpus, window, by, minimum, save=False):
     # Generates the estimated vocabulary at each grade level.
     # Relies on the frequency distributions (fdists) computed from the time sliced corpora. The frequency distributions indicate the number of occurrences of each word at each time slice, as well as the the number of speakers who said each word at each time slice.
     # The vocabulary is determined by the presence of a word that satisfies the specified criteria at each time slice. The criteria is indicated by the 'by' and 'min' variables. by indicates which criteria to use, either 'freq' (the frequency) or 'speakers' (the number of speakers), and then min indicates the value equal to or above which the word is added to the vocabulary. For instance, if by = 'speakers' and min = 3, a word that has been spoken by 2 speakers at grade 1 will not be added to the learned vocabulary at grade 1, but if it is spoken by 3 speakers by grade 2, then it will be added to the learned vocabulary at grade 2.
@@ -49,7 +49,7 @@ def gen_vocabulary(adult_corpus, by, minimum, save=False):
         vocabulary_df.columns = vocabulary.keys()
         vocab_sum = pd.DataFrame(vocab_sum)
 
-        writer = pd.ExcelWriter('vocabulary.xlsx', engine='xlsxwriter')
+        writer = pd.ExcelWriter(f'vocabulary_{window}_{by}_{minimum}.xlsx', engine='xlsxwriter')
         vocabulary_df.to_excel(writer, sheet_name="Vocabulary")
         vocab_sum.to_excel(writer, sheet_name="Summary")
         writer.save()
@@ -248,7 +248,7 @@ def summarize_learnPotential(df, lp_score):
     return summ_df
 
 def main(window, vocab_by, vocab_minimum, z_threshold):
-    # Runs all the results and generates two outputs, a vocabulary file and a learnPotential file. The vocabulary file contains the estimated vocabulary which includes all of the words which are determined to be known at each grade level. The learningPotential file includes a learning potential score from each theory for each word at each grade and whether the word was learned or not.
+    # Runs all the results and generates two outputs, a vocabulary file and a learnPotential file each include the window size, vocab_by and vocab_minimum values in te file name. The vocabulary file contains the estimated vocabulary which includes all of the words which are determined to be known at each grade level. The learningPotential file includes a learning potential score from each theory for each word at each grade and whether the word was learned or not.
     # Parameters determine the following:
         # window: The window size to be used when computing the context model
         # vocab_by: Can be one of 'freq' or 'speakers', used to determine what the vocabulary is based on. If vocab_by == 'freq' the vocabulary is determined by the frequency with which the word occurred in the corpus. If vocab_by == 'speakers' the vocabulary is determined by the number of speakers who uttered the word in the corpus.
@@ -300,7 +300,7 @@ def main(window, vocab_by, vocab_minimum, z_threshold):
 
     lp_summ = reduce(lambda df1,df2: pd.merge(df1,df2,on=['word','learned']), lp_summ)
 
-    writer = pd.ExcelWriter(f'learningPotential_{window}.xlsx', engine='xlsxwriter')
+    writer = pd.ExcelWriter(f'learningPotential_{window}_{vocab_by}_{vocab_minimum}.xlsx', engine='xlsxwriter')
     lp_scores.to_excel(writer, sheet_name="Scores", index=False)
     lp_summ.to_excel(writer, sheet_name="Summary", index=False)
     writer.save()
