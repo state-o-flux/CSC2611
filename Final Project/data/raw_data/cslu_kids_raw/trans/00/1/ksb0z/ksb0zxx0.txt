@@ -1,1 +1,0 @@
- <bs> a<long> <br> <bn> <pau> <bn> b <pau> <bn> c<long> <br> <pau> <bn> d <bn> e  
