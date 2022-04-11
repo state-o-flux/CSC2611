@@ -1,0 +1,8 @@
+Description of verification:
+
+1 Good: Only the target word is said.
+2 Maybe: Target word is present, but there's other junk in the file.
+3 Bad: Target word is not said. 
+4 Puff: Same as good, but w/ an air puff.
+
+Verification is for scripted speech ONLY!
