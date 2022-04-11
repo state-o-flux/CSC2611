@@ -4,100 +4,9 @@ import numpy as np
 import pandas as pd
 from functools import reduce
 
-from util import load_data, p_print, cosine_similarity, gen_z_score, gen_word_groups, unique
+from util import load_data, p_print, cosine_similarity, gen_z_score, gen_word_groups, unique, gen_fdist
 
 included_grades = ['00','01','02','03','04','05','06','full']
-
-def gen_fdist(corpora, grades, save=False):
-    dfs = []
-    fdist_dict = {}
-    for i in grades:
-        print('Generating distributions for {}'.format(i))
-        corpus = corpora[i]
-        corpus_combined = ' '.join(corpus)
-
-        fdist = dict(nltk.FreqDist(nltk.word_tokenize(corpus_combined)))
-        fdist = dict(sorted(fdist.items(), key=lambda item: item[1], reverse=True))
-
-        words = list(fdist.keys())
-        n = len(words)
-        for j in range(n):
-            word = words[j]
-            speakers = 0
-            for k in corpus:
-                if word in nltk.word_tokenize(k):
-                    speakers += 1
-            fdist[word] = {'freq':fdist[word], 'speakers':speakers}
-            p = round(((j + 1) / n) * 100)
-            print(f"'{word}' done: {p}% complete")
-
-        fdist_df = []
-        for j in fdist.items():
-            fdist_df.append({'word':j[0],'freq':j[1]['freq'],'speakers':j[1]['speakers']})
-        fdist_df = pd.DataFrame(fdist_df)
-        fdist_df.columns = [j + '_' + i for j in fdist_df.columns]
-        dfs.append(fdist_df)
-        fdist_dict[i] = fdist
-
-    if save:
-        dfs = pd.concat(dfs, axis=1)
-        dfs.to_excel('fdist_addon.xlsx')
-
-        with open('fdist_addon.json', 'w') as file:
-            json.dump(fdist_dict, file)
-    
-    return fdist_dict
-
-def gen_sum_stats(type, save=False):
-
-    corp_name = type + '_corpora'
-    fdist_name = 'fdist_' + type
-
-    adult_words = load_data('corpora_adult')
-    adult_words = adult_words['unique_words']
-    corpora = load_data(corp_name)
-    remove_words = load_data('res')
-    fdists = load_data(fdist_name)
-
-    grades = [i for i in fdists]
-    n_speakers = [len(corpora[i]) for i in grades]
-    tokens = [sum([fdists[i][j]['freq'] for j in fdists[i]]) for i in fdists]
-    types = [len(fdists[i]) for i in fdists]
-
-    type_greater1 = []
-    type_greater2 = []
-    speakers_greater1 = []
-    speakers_greater2 = []
-    for i in fdists:
-        x1 = 0
-        x2 = 0
-        x3 = 0
-        x4 = 0
-        for j in fdists[i]:
-            if j in adult_words and j not in remove_words:
-                if fdists[i][j]['freq'] > 1:
-                    x1 += 1
-                if fdists[i][j]['freq'] > 2:
-                    x2 += 1
-                if fdists[i][j]['speakers'] > 1:
-                    x3 += 1
-                if fdists[i][j]['speakers'] > 2:
-                    x4 += 1
-        type_greater1.append(x1)
-        type_greater2.append(x2)
-        speakers_greater1.append(x3)
-        speakers_greater2.append(x4)
-
-    df = pd.concat([pd.DataFrame(i) for i in [grades, tokens, types, type_greater1, speakers_greater1, type_greater2, speakers_greater2, n_speakers]], axis=1).T
-    cols = df.iloc[0]
-    df = df[1:]
-    df.columns = cols
-    df.index = ['tokens','types','types > 1', 'speakers > 1', 'types > 2', 'speakers > 2', 'n_speakers']
-
-    if save:
-        df.to_excel('data/fdist_sum_' + type + '.xlsx')
-    
-    return df
 
 def gen_vocabulary(adult_corpus, by, minimum, save=False):
     # Generates the estimated vocabulary at each grade level.
@@ -106,6 +15,11 @@ def gen_vocabulary(adult_corpus, by, minimum, save=False):
 
     adult_words = adult_corpus['unique_words']
     fdists = load_data('fdist')
+    if fdists is None:
+        kids_corpora = load_data('corpora_kids')
+        for grade in kids_corpora:
+            fdists = gen_fdist(kids_corpora, grade, save=True)
+
     remove_words = load_data('res')
 
     final_vocabulary = []
@@ -142,12 +56,13 @@ def gen_vocabulary(adult_corpus, by, minimum, save=False):
     
     return vocabulary
 
-def gen_context_model(corpus, grade, window):
-    print(f'Generating Context Model for Grade: {grade} Window Size: {window}')
+def gen_context_model(corpus, grade, window, save=False):
+    # Generates the context model (also known as the word x word matrix) from the corpus at a specific grade. Corpora must be a grade tagged dictionary in which the keys are grades and each value is a corpus from that specific grade. Window indicates the window size to use for the context model.
     corpus = corpus[grade]
     corpus = ' '.join(corpus)
-
     remove_words = load_data('res')
+
+    print(f'Generating Context Model Window Size: {window}')
 
     text = nltk.word_tokenize(corpus)
     text = [i for i in text if i not in remove_words]
@@ -170,7 +85,7 @@ def gen_context_model(corpus, grade, window):
                         match_words[k] += 1
                     else:
                         match_words[k] = 1
-        p_print(i, n)
+        p_print(i, n, word)
         context_model[word] = match_words
 
     result = {}
@@ -186,73 +101,44 @@ def gen_context_model(corpus, grade, window):
         result[i] = i_val
     
     print('\n')
+
+    if save:
+        with open(f'data/context_model_{window}.json' 'w') as file:
+            json.dump(result, file)
+
     return result
 
-def export_context_models(corpora, window):
-    context_model = {}
-    for i in corpora:
-        context_model[i] = gen_context_model(corpora, i, window)
-    
-    with open(f'data/context_model_{window}.json', 'w') as file:
-        json.dump(context_model, file)
+def gen_ppmi(context_model):
+    # Generates the positive pointwise mututal information model from the context model.
+    print(f'Generating ppmi model from context model')
 
-def gen_ppmi(context_models):
     result = {}
-    if type(context_models) == list:
-        for grade in context_models:
-            print(f'Generating ppmi model from grade {grade} context model')
-            context_model = context_models[grade]
-            words = list(context_model.keys())
-            df = pd.DataFrame(context_model)
-            arr = df.values
+    words = list(context_model.keys())
+    df = pd.DataFrame(context_model)
+    arr = df.values
 
-            row_totals = arr.sum(axis=1).astype(float)
-            prob_cols_given_row = (arr.T / row_totals).T
+    row_totals = arr.sum(axis=1).astype(float)
+    prob_cols_given_row = (arr.T / row_totals).T
 
-            col_totals = arr.sum(axis=0).astype(float)
-            prob_of_cols = col_totals / sum(col_totals)
+    col_totals = arr.sum(axis=0).astype(float)
+    prob_of_cols = col_totals / sum(col_totals)
 
-            ratio = prob_cols_given_row / prob_of_cols
-            ratio[ratio==0] = 0.00001
-            _pmi = np.log2(ratio)
-            _pmi[_pmi < 0] = 0
+    ratio = prob_cols_given_row / prob_of_cols
+    ratio[ratio==0] = 0.00001
+    _pmi = np.log2(ratio)
+    _pmi[_pmi < 0] = 0
 
-            ppmi = {}
-            n = len(words)
-            for i in range(n):
-                word = words[i]
-                p_print(i, n)
-                ppmi[word] = list(_pmi[i])
-            print('\n')
-            result[grade] = ppmi
-    else:
-        print(f'Generating ppmi model from context model')
-        context_model = context_models
-        words = list(context_model.keys())
-        df = pd.DataFrame(context_model)
-        arr = df.values
-
-        row_totals = arr.sum(axis=1).astype(float)
-        prob_cols_given_row = (arr.T / row_totals).T
-
-        col_totals = arr.sum(axis=0).astype(float)
-        prob_of_cols = col_totals / sum(col_totals)
-
-        ratio = prob_cols_given_row / prob_of_cols
-        ratio[ratio==0] = 0.00001
-        _pmi = np.log2(ratio)
-        _pmi[_pmi < 0] = 0
-
-        n = len(words)
-        for i in range(n):
-            word = words[i]
-            p_print(i, n)
-            result[word] = list(_pmi[i])
-        print('\n')
+    n = len(words)
+    for i in range(n):
+        word = words[i]
+        p_print(i, n, word)
+        result[word] = list(_pmi[i])
+    print('\n')
 
     return result
 
-def gen_word_degrees(window, gen_words, compare_words, ppmi, save=False):
+def gen_word_degrees(window, vocab_by, vocab_minimum, gen_words, compare_words, ppmi, save=False):
+    # Generates the word degree value (connectiveness) of each word as derived from the ppmi model. Degree is computed for every gen_word as the average cosine_similarity of that word with each compare_word.
     result = {}
     n = len(gen_words)
     print(f'Generating Degrees for {n} words in vocabulary')
@@ -263,12 +149,14 @@ def gen_word_degrees(window, gen_words, compare_words, ppmi, save=False):
         p_print(i, n, word)
 
     if save:
-        with open(f'data/word_degrees_{window}.json', 'w') as file:
+        file_name = f'data/word_degrees_{window}_{vocab_by}_{vocab_minimum}.json'
+        with open(file_name, 'w') as file:
             json.dump(result, file)
     
     return result
 
 def gen_learnPotential(theory, grade, kids_corpora, adult_corpus, vocabulary, ppmi_model, degrees, z_threshold, save=False):
+    # Generates the learning potential score of each word based on a given theory. Theories are described below.
     # t1: Theory 1: PREFERENTIAL ATTACHMENT
         # Words learned at t + 1 should be those that connect to the higher-degree known words.
         # LP score = mean degree of the known words that the new word attaches to.
@@ -341,6 +229,7 @@ def gen_learnPotential(theory, grade, kids_corpora, adult_corpus, vocabulary, pp
     return result
 
 def summarize_learnPotential(df, lp_score):
+    # Summarizes the learn potential scores by computing the average score per word and the grade at which the word was learned.
     words = unique(list(df['unknownWord']))
 
     summ_df = []
@@ -359,26 +248,33 @@ def summarize_learnPotential(df, lp_score):
     return summ_df
 
 def main(window, vocab_by, vocab_minimum, z_threshold):
+    # Runs all the results and generates two outputs, a vocabulary file and a learnPotential file. The vocabulary file contains the estimated vocabulary which includes all of the words which are determined to be known at each grade level. The learningPotential file includes a learning potential score from each theory for each word at each grade and whether the word was learned or not.
+    # Parameters determine the following:
+        # window: The window size to be used when computing the context model
+        # vocab_by: Can be one of 'freq' or 'speakers', used to determine what the vocabulary is based on. If vocab_by == 'freq' the vocabulary is determined by the frequency with which the word occurred in the corpus. If vocab_by == 'speakers' the vocabulary is determined by the number of speakers who uttered the word in the corpus.
+        # vocab_minimum: The minimum value to be used to determine the vocabulary, either of frequency or speakers.
+        # z_threshold: The z value threshold to use for determining whether two words are connected under t1 (preferential attachment model). Must be between -3 and 3.
 
     kids_corpora = load_data('corpora_kids')
     adult_corpus = load_data('corpora_adult')
 
-    context_models = load_data(f'context_model_{window}')
+    context_model = load_data(f'context_model_{window}')
 
-    if context_models is None:
-        export_context_models(kids_corpora, window)
-        context_models = load_data(f'context_model_{window}')
+    if context_model is None:
+        gen_context_model(kids_corpora, 'full', window)
+        context_model = load_data(f'context_model_{window}')
 
-    ppmi_model = gen_ppmi(context_models['full'])
+    ppmi_model = gen_ppmi(context_model)
     vocabulary = gen_vocabulary(adult_corpus, by=vocab_by, minimum=vocab_minimum, save=True)
 
-    degrees = load_data(f'word_degrees_{window}')
+    degrees = load_data(f'word_degrees_{window}_{vocab_by}_{vocab_minimum}')
     if degrees is None:
         all_vocab_words = []
         for grade in vocabulary:
             all_vocab_words.extend([word for word in vocabulary[grade]])
 
-        gen_word_degrees(window, all_vocab_words, all_vocab_words, ppmi_model, save=True)
+        gen_word_degrees(window, vocab_by, vocab_minimum, all_vocab_words, all_vocab_words, ppmi_model, save=True)
+        degrees = load_data(f'word_degrees_{window}_{vocab_by}_{vocab_minimum}')
 
     lp_scores = {}
     lp_grades = ['01','02','03','04','05','06']
@@ -411,4 +307,5 @@ def main(window, vocab_by, vocab_minimum, z_threshold):
 
     return
 
-main(window=4, vocab_by='speakers', vocab_minimum=3, z_threshold=1.5)
+if __name__ == '__main__':
+    main(window=2, vocab_by='speakers', vocab_minimum=3, z_threshold=1.5)
