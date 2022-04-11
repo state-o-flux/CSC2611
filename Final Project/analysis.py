@@ -103,7 +103,7 @@ def gen_context_model(corpus, grade, window, save=False):
     print('\n')
 
     if save:
-        with open(f'data/context_model_{window}.json' 'w') as file:
+        with open(f'data/context_model_{window}.json', 'w') as file:
             json.dump(result, file)
 
     return result
@@ -259,13 +259,12 @@ def main(window, vocab_by, vocab_minimum, z_threshold):
     adult_corpus = load_data('corpora_adult')
 
     context_model = load_data(f'context_model_{window}')
-
     if context_model is None:
-        gen_context_model(kids_corpora, 'full', window)
+        gen_context_model(kids_corpora, 'full', window, save=True)
         context_model = load_data(f'context_model_{window}')
 
     ppmi_model = gen_ppmi(context_model)
-    vocabulary = gen_vocabulary(adult_corpus, by=vocab_by, minimum=vocab_minimum, save=True)
+    vocabulary = gen_vocabulary(adult_corpus, window, vocab_by, vocab_minimum, save=True)
 
     degrees = load_data(f'word_degrees_{window}_{vocab_by}_{vocab_minimum}')
     if degrees is None:
